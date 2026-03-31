@@ -6,14 +6,38 @@ export default function StartScreen() {
   const router = useRouter();
   const { highScore } = useHighScore();
 
+  const startGame = (mode: string) => {
+    router.replace({ pathname: "/game", params: { mode } });
+  };
+
   return (
-    <Pressable style={styles.container} onPress={() => router.replace("/game")}>
+    <View style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>CHROMA</Text>
         <Text style={styles.bestScore}>BEST: {highScore}</Text>
-        <Text style={styles.prompt}>TAP TO PLAY</Text>
+
+        <View style={styles.buttonContainer}>
+          <Pressable
+            style={[styles.button, styles.easyButton]}
+            onPress={() => startGame("easy")}
+          >
+            <Text style={styles.buttonText}>EASY</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.button, styles.mediumButton]}
+            onPress={() => startGame("medium")}
+          >
+            <Text style={styles.buttonText}>MEDIUM</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.button, styles.hardButton]}
+            onPress={() => startGame("hard")}
+          >
+            <Text style={styles.buttonText}>HARD</Text>
+          </Pressable>
+        </View>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -26,6 +50,7 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: "center",
+    width: "100%",
   },
   title: {
     fontSize: 64,
@@ -40,10 +65,31 @@ const styles = StyleSheet.create({
     color: "#888888",
     marginBottom: 60,
   },
-  prompt: {
-    fontSize: 28,
-    fontWeight: "700",
+  buttonContainer: {
+    width: "80%",
+    gap: 15,
+  },
+  button: {
+    paddingVertical: 15,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#000000",
+  },
+  easyButton: {
+    backgroundColor: "#E8F5E9",
+  },
+  mediumButton: {
+    backgroundColor: "#FFF3E0",
+  },
+  hardButton: {
+    backgroundColor: "#FFEBEE",
+  },
+  buttonText: {
+    fontSize: 24,
+    fontWeight: "800",
     color: "#000000",
-    opacity: 0.5,
+    letterSpacing: 2,
   },
 });

@@ -10,7 +10,7 @@ import Animated, {
   useAnimatedReaction,
   runOnJS,
 } from "react-native-reanimated";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import ScoreDisplay from "../components/ScoreDisplay";
 import { useAudio } from "../hooks/useAudio";
@@ -23,6 +23,10 @@ import {
   MAX_SECTION_LENGTH,
   INITIAL_SPEED,
   SPEED_INCREMENT,
+  MAX_SPEED,
+  MEDIUM_INITIAL_SPEED,
+  MEDIUM_SPEED_INCREMENT,
+  MEDIUM_MAX_SPEED,
   SECTIONS_FOR_SPEED_INCREASE,
   BACKGROUND_COLOR,
 } from "../constants/constants";
@@ -68,24 +72,64 @@ const Particle = ({
 interface PathSection {
   id: number;
   color: string;
+  visualColor: string;
+  hideBorder: boolean;
   length: number;
   absoluteBottom: number;
 }
 
 const INITIAL_SECTIONS: PathSection[] = [
-  { id: 0, color: COLOR_A, length: height, absoluteBottom: 0 },
-  { id: 1, color: COLOR_B, length: 400, absoluteBottom: height },
-  { id: 2, color: COLOR_A, length: 400, absoluteBottom: height + 400 },
-  { id: 3, color: COLOR_B, length: 400, absoluteBottom: height + 800 },
+  {
+    id: 0,
+    color: COLOR_A,
+    visualColor: COLOR_A,
+    hideBorder: false,
+    length: height,
+    absoluteBottom: 0,
+  },
+  {
+    id: 1,
+    color: COLOR_B,
+    visualColor: COLOR_B,
+    hideBorder: false,
+    length: 400,
+    absoluteBottom: height,
+  },
+  {
+    id: 2,
+    color: COLOR_A,
+    visualColor: COLOR_A,
+    hideBorder: false,
+    length: 400,
+    absoluteBottom: height + 400,
+  },
+  {
+    id: 3,
+    color: COLOR_B,
+    visualColor: COLOR_B,
+    hideBorder: false,
+    length: 400,
+    absoluteBottom: height + 800,
+  },
 ];
 
 export default function GameScreen() {
   const router = useRouter();
+  const { mode = "easy" } = useLocalSearchParams<{ mode: string }>();
+
+  // Determine difficulty settings
+  const isMediumOrHard = mode === "medium" || mode === "hard";
+  const startSpeed = isMediumOrHard ? MEDIUM_INITIAL_SPEED : INITIAL_SPEED;
+  const speedIncrement = isMediumOrHard
+    ? MEDIUM_SPEED_INCREMENT
+    : SPEED_INCREMENT;
+  const maxPlayableSpeed = isMediumOrHard ? MEDIUM_MAX_SPEED : MAX_SPEED;
+
   const score = useSharedValue<number>(0);
   const isDead = useSharedValue<boolean>(false);
   const ballColor = useSharedValue<string>(COLOR_A);
   const pathOffset = useSharedValue<number>(0);
-  const speed = useSharedValue<number>(INITIAL_SPEED);
+  const speed = useSharedValue<number>(startSpeed);
   const nextBoundaryAbsoluteY = useSharedValue<number>(
     INITIAL_SECTIONS[1].absoluteBottom,
   );
@@ -152,7 +196,10 @@ export default function GameScreen() {
             score.value += 1;
             playScore();
             if (score.value % SECTIONS_FOR_SPEED_INCREASE === 0) {
-              speed.value += SPEED_INCREMENT;
+              speed.value = Math.min(
+                speed.value + speedIncrement,
+                maxPlayableSpeed,
+              );
             }
 
             // Track the absolute boundary we are approaching next
@@ -200,9 +247,22 @@ export default function GameScreen() {
             Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
             MIN_SECTION_LENGTH;
 
-          const newSection = {
+          let newVisualColor = newColor;
+          let newHideBorder = false;
+
+          if (mode === "hard" && Math.random() < 0.3) {
+            newVisualColor = lastSection.visualColor;
+            newHideBorder = true;
+          } else {
+            newVisualColor =
+              lastSection.visualColor === COLOR_A ? COLOR_B : COLOR_A;
+          }
+
+          const newSection: PathSection = {
             id: lastSection.id + 1,
             color: newColor,
+            visualColor: newVisualColor,
+            hideBorder: newHideBorder,
             length: newLength,
             absoluteBottom: lastSection.absoluteBottom + lastSection.length,
           };
@@ -216,7 +276,17 @@ export default function GameScreen() {
         setPathSections([...sections]);
       }
     },
-    [ballColor, handleDeath, speed, playScore, score, nextBoundaryAbsoluteY],
+    [
+      ballColor,
+      handleDeath,
+      speed,
+      playScore,
+      score,
+      nextBoundaryAbsoluteY,
+      mode,
+      speedIncrement,
+      maxPlayableSpeed,
+    ],
   );
 
   useAnimatedReaction(
@@ -322,13 +392,13 @@ export default function GameScreen() {
             style={[
               styles.pathSection,
               {
-                backgroundColor: section.color,
+                backgroundColor: section.visualColor,
                 height: section.length,
                 bottom: section.absoluteBottom,
               },
             ]}
           >
-            <View style={styles.sectionBorderTop} />
+            {!section.hideBorder && <View style={styles.sectionBorderTop} />}
           </View>
         ))}
       </Animated.View>
