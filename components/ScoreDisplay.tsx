@@ -1,6 +1,10 @@
 import { View, Text, StyleSheet } from "react-native";
 
-export default function ScoreDisplay({ score }) {
+interface ScoreDisplayProps {
+  score: number;
+}
+
+export default function ScoreDisplay({ score }: ScoreDisplayProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.scoreText}>{score}</Text>

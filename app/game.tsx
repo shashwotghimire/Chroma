@@ -3,10 +3,10 @@ import { View, StyleSheet, Dimensions, Pressable } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   withSequence,
   runOnJS,
+  SharedValue,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -29,7 +29,19 @@ const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
 const NUM_PARTICLES = 12;
 
-const Particle = ({ index, isDead, particleProgress, ballColor }) => {
+interface ParticleProps {
+  index: number;
+  isDead: boolean;
+  particleProgress: SharedValue<number>;
+  ballColor: SharedValue<string>;
+}
+
+const Particle = ({
+  index,
+  isDead,
+  particleProgress,
+  ballColor,
+}: ParticleProps) => {
   const angle = (index / NUM_PARTICLES) * Math.PI * 2;
   const distance = 80;
 
@@ -44,44 +56,48 @@ const Particle = ({ index, isDead, particleProgress, ballColor }) => {
 
   return (
     <Animated.View
-      style={[
-        styles.particle,
-        { backgroundColor: ballColor.value },
-        pStyle,
-      ]}
+      style={[styles.particle, { backgroundColor: ballColor.value }, pStyle]}
     />
   );
 };
 
+interface PathSection {
+  id: number;
+  color: string;
+  length: number;
+}
+
 export default function GameScreen() {
   const router = useRouter();
-  const [score, setScore] = useState(0);
-  const [isDead, setIsDead] = useState(false);
-  const ballColor = useSharedValue(COLOR_A);
-  const pathOffset = useSharedValue(0);
-  const speed = useSharedValue(INITIAL_SPEED);
+  const [score, setScore] = useState<number>(0);
+  const [isDead, setIsDead] = useState<boolean>(false);
+  const ballColor = useSharedValue<string>(COLOR_A);
+  const pathOffset = useSharedValue<number>(0);
+  const speed = useSharedValue<number>(INITIAL_SPEED);
 
-  const flashOpacity = useSharedValue(0);
-  const particleProgress = useSharedValue(0);
+  const flashOpacity = useSharedValue<number>(0);
+  const particleProgress = useSharedValue<number>(0);
 
   const { playTap, playDeath, playScore } = useAudio();
 
-  const [pathSections, setPathSections] = useState([
+  const [pathSections, setPathSections] = useState<PathSection[]>([
     { id: 0, color: COLOR_A, length: height },
     { id: 1, color: COLOR_B, length: 600 },
     { id: 2, color: COLOR_A, length: 500 },
     { id: 3, color: COLOR_B, length: 700 },
   ]);
 
-  const animationFrameRef = useRef(null);
-  const currentSectionIndex = useRef(0);
-  const scoreRef = useRef(0);
-  const lastSectionColor = useRef(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const currentSectionIndex = useRef<number>(0);
+  const scoreRef = useRef<number>(0);
+  const lastSectionColor = useRef<string | null>(null);
 
   const handleDeath = useCallback(
-    (wrongColor) => {
+    (wrongColor: string) => {
       setIsDead(true);
-      cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
 
       // Death sequence
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -107,7 +123,7 @@ export default function GameScreen() {
   );
 
   const checkCollision = useCallback(
-    (offset) => {
+    (offset: number) => {
       let accumulatedLength = 0;
       for (let i = 0; i < pathSections.length; i++) {
         const section = pathSections[i];
@@ -172,7 +188,11 @@ export default function GameScreen() {
 
   useEffect(() => {
     animationFrameRef.current = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(animationFrameRef.current);
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
   }, [gameLoop]);
 
   const handleTap = () => {

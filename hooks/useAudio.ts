@@ -2,9 +2,9 @@ import { useEffect, useRef } from "react";
 import { Audio } from "expo-av";
 
 export function useAudio() {
-  const tapSound = useRef(null);
-  const deathSound = useRef(null);
-  const scoreSound = useRef(null);
+  const tapSound = useRef<Audio.Sound | null>(null);
+  const deathSound = useRef<Audio.Sound | null>(null);
+  const scoreSound = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     async function loadSounds() {

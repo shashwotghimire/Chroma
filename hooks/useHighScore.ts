@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 
 export function useHighScore() {
-  const [highScore, setHighScore] = useState(0);
+  const [highScore, setHighScore] = useState<number>(0);
 
   const loadHighScore = useCallback(async () => {
     try {
@@ -16,7 +16,7 @@ export function useHighScore() {
     }
   }, []);
 
-  const saveHighScore = useCallback(async (newScore) => {
+  const saveHighScore = useCallback(async (newScore: number) => {
     try {
       await AsyncStorage.setItem("@high_score", newScore.toString());
       setHighScore(newScore);

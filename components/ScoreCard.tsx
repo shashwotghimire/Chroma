@@ -2,7 +2,12 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { COLOR_A, COLOR_B } from "../constants/constants";
 
-export default function ScoreCard({ score, bestScore }) {
+interface ScoreCardProps {
+  score: number;
+  bestScore: number;
+}
+
+export default function ScoreCard({ score, bestScore }: ScoreCardProps) {
   return (
     <View style={styles.card}>
       <View style={[styles.stripe, { backgroundColor: COLOR_A }]} />

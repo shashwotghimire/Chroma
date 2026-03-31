@@ -6,7 +6,7 @@ import ScoreCard from "../components/ScoreCard";
 
 export default function DeathScreen() {
   const router = useRouter();
-  const { score } = useLocalSearchParams();
+  const { score } = useLocalSearchParams<{ score: string }>();
   const currentScore = parseInt(score, 10) || 0;
   const { highScore, saveHighScore } = useHighScore();
 
@@ -23,7 +23,7 @@ export default function DeathScreen() {
       await Share.share({
         message: `I scored ${currentScore} in Chroma! Can you beat my best of ${finalBest}?`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error.message);
     }
   };
