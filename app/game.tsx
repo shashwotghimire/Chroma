@@ -37,7 +37,12 @@ interface ParticleProps {
   ballColor: SharedValue<string>;
 }
 
-const Particle = ({ index, isDead, particleProgress, ballColor }: ParticleProps) => {
+const Particle = ({
+  index,
+  isDead,
+  particleProgress,
+  ballColor,
+}: ParticleProps) => {
   const angle = (index / NUM_PARTICLES) * Math.PI * 2;
   const distance = 80;
 
@@ -52,11 +57,7 @@ const Particle = ({ index, isDead, particleProgress, ballColor }: ParticleProps)
 
   return (
     <Animated.View
-      style={[
-        styles.particle,
-        { backgroundColor: ballColor.value },
-        pStyle,
-      ]}
+      style={[styles.particle, { backgroundColor: ballColor.value }, pStyle]}
     />
   );
 };
@@ -88,7 +89,8 @@ export default function GameScreen() {
 
   const { playTap, playDeath, playScore } = useAudio();
 
-  const [pathSections, setPathSections] = useState<PathSection[]>(INITIAL_SECTIONS);
+  const [pathSections, setPathSections] =
+    useState<PathSection[]>(INITIAL_SECTIONS);
   const pathSectionsRef = useRef<PathSection[]>([...INITIAL_SECTIONS]);
 
   const animationFrameRef = useRef<number | null>(null);
@@ -134,10 +136,7 @@ export default function GameScreen() {
         const sectionVisualBottomY = height + offset - section.absoluteBottom;
         const sectionVisualTopY = sectionVisualBottomY - section.length;
 
-        if (
-          BALL_Y >= sectionVisualTopY &&
-          BALL_Y <= sectionVisualBottomY
-        ) {
+        if (BALL_Y >= sectionVisualTopY && BALL_Y <= sectionVisualBottomY) {
           if (section.id > currentSectionIdRef.current) {
             currentSectionIdRef.current = section.id;
             score.value += 1;
@@ -172,7 +171,8 @@ export default function GameScreen() {
     let offscreenCount = 0;
     for (let i = 0; i < sections.length; i++) {
       const sec = sections[i];
-      const secVisualTop = height + pathOffset.value - sec.absoluteBottom - sec.length;
+      const secVisualTop =
+        height + pathOffset.value - sec.absoluteBottom - sec.length;
       if (secVisualTop > height + 200) {
         offscreenCount++;
       } else {
@@ -193,7 +193,7 @@ export default function GameScreen() {
         const newLength =
           Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
           MIN_SECTION_LENGTH;
-        
+
         const newSection = {
           id: lastSection.id + 1,
           color: newColor,
@@ -254,10 +254,10 @@ export default function GameScreen() {
             key={section.id}
             style={[
               styles.pathSection,
-              { 
-                backgroundColor: section.color, 
+              {
+                backgroundColor: section.color,
                 height: section.length,
-                bottom: section.absoluteBottom 
+                bottom: section.absoluteBottom,
               },
             ]}
           >
@@ -265,6 +265,9 @@ export default function GameScreen() {
           </View>
         ))}
       </Animated.View>
+
+      <View style={styles.thresholdLine} pointerEvents="none" />
+
       <Animated.View style={[styles.ball, ballStyle]} />
 
       <View style={styles.particleContainer} pointerEvents="none">
@@ -331,6 +334,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 8,
+  },
+  thresholdLine: {
+    position: "absolute",
+    top: BALL_Y,
+    width: PATH_WIDTH + 40,
+    height: 2,
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    zIndex: 90,
   },
   particleContainer: {
     position: "absolute",

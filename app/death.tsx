@@ -8,15 +8,15 @@ export default function DeathScreen() {
   const router = useRouter();
   const { score } = useLocalSearchParams<{ score: string }>();
   const currentScore = parseInt(score, 10) || 0;
-  const { highScore, saveHighScore } = useHighScore();
+  const { highScore, saveScoreIfBest, isLoaded } = useHighScore();
 
   const finalBest = Math.max(currentScore, highScore);
 
   useEffect(() => {
-    if (currentScore > highScore) {
-      saveHighScore(currentScore);
+    if (isLoaded) {
+      saveScoreIfBest(currentScore);
     }
-  }, [currentScore, highScore, saveHighScore]);
+  }, [currentScore, isLoaded, saveScoreIfBest]);
 
   const handleShare = async () => {
     try {

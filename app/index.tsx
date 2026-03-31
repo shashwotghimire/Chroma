@@ -1,17 +1,10 @@
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter } from "expo-router";
 import { useHighScore } from "../hooks/useHighScore";
-import { useCallback } from "react";
 
 export default function StartScreen() {
   const router = useRouter();
-  const { highScore, loadHighScore } = useHighScore();
-
-  useFocusEffect(
-    useCallback(() => {
-      loadHighScore();
-    }, [loadHighScore]),
-  );
+  const { highScore } = useHighScore();
 
   return (
     <Pressable style={styles.container} onPress={() => router.replace("/game")}>

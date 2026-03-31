@@ -1,6 +1,9 @@
 import React from "react";
 import { View, TextInput, StyleSheet } from "react-native";
-import Animated, { useAnimatedProps, SharedValue } from "react-native-reanimated";
+import Animated, {
+  useAnimatedProps,
+  SharedValue,
+} from "react-native-reanimated";
 
 Animated.addWhitelistedNativeProps({ text: true });
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
