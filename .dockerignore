@@ -1,0 +1,8 @@
+node_modules
+.expo
+.git
+.vscode
+android
+ios
+npm-debug.log
+expo.log
