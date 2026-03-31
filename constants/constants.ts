@@ -8,4 +8,4 @@ export const SECTIONS_FOR_SPEED_INCREASE = 5;
 export const BALL_RADIUS = 20;
 export const PATH_WIDTH = 100;
 export const MIN_SECTION_LENGTH = 300;
-export const MAX_SECTION_LENGTH = 800;
+export const MAX_SECTION_LENGTH = 500;
