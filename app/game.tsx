@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { View, StyleSheet, Dimensions, Pressable } from "react-native";
 import Animated, {
   useSharedValue,
@@ -6,6 +6,9 @@ import Animated, {
   withTiming,
   withSequence,
   SharedValue,
+  useFrameCallback,
+  useAnimatedReaction,
+  runOnJS,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -28,11 +31,11 @@ const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
 const NUM_PARTICLES = 12;
 const PARTICLE_INDICES = Array.from({ length: NUM_PARTICLES }).map((_, i) => i);
-const COLLISION_GRACE = 15; // Leniency at boundaries
+const COLLISION_GRACE = 35; // Leniency at boundaries
 
 interface ParticleProps {
   index: number;
-  isDead: boolean;
+  isDead: SharedValue<boolean>;
   particleProgress: SharedValue<number>;
   ballColor: SharedValue<string>;
 }
@@ -47,7 +50,7 @@ const Particle = ({
   const distance = 80;
 
   const pStyle = useAnimatedStyle(() => ({
-    opacity: isDead ? 1 - particleProgress.value : 0,
+    opacity: isDead.value ? 1 - particleProgress.value : 0,
     transform: [
       { translateX: Math.cos(angle) * (distance * particleProgress.value) },
       { translateY: Math.sin(angle) * (distance * particleProgress.value) },
@@ -79,10 +82,13 @@ const INITIAL_SECTIONS: PathSection[] = [
 export default function GameScreen() {
   const router = useRouter();
   const score = useSharedValue<number>(0);
-  const [isDead, setIsDead] = useState<boolean>(false);
+  const isDead = useSharedValue<boolean>(false);
   const ballColor = useSharedValue<string>(COLOR_A);
   const pathOffset = useSharedValue<number>(0);
   const speed = useSharedValue<number>(INITIAL_SPEED);
+  const nextBoundaryAbsoluteY = useSharedValue<number>(
+    INITIAL_SECTIONS[1].absoluteBottom,
+  );
 
   const flashOpacity = useSharedValue<number>(0);
   const particleProgress = useSharedValue<number>(0);
@@ -93,16 +99,12 @@ export default function GameScreen() {
     useState<PathSection[]>(INITIAL_SECTIONS);
   const pathSectionsRef = useRef<PathSection[]>([...INITIAL_SECTIONS]);
 
-  const animationFrameRef = useRef<number | null>(null);
   const currentSectionIdRef = useRef<number>(0);
   const lastSectionColor = useRef<string | null>(null);
 
   const handleDeath = useCallback(
     (wrongColor: string) => {
-      setIsDead(true);
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      isDead.value = true;
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       playDeath();
@@ -123,13 +125,21 @@ export default function GameScreen() {
         });
       }, 600);
     },
-    [router, flashOpacity, particleProgress, playDeath, score],
+    [router, flashOpacity, particleProgress, playDeath, score, isDead],
   );
 
-  const checkCollision = useCallback(
+  useFrameCallback((frameInfo) => {
+    if (isDead.value) return;
+    const dt = frameInfo.timeSincePreviousFrame || 16.666;
+    const timeScale = dt / 16.666;
+    pathOffset.value += speed.value * timeScale;
+  });
+
+  const checkCollisionAndGenerate = useCallback(
     (offset: number) => {
       const sections = pathSectionsRef.current;
 
+      // 1. Check Collision
       for (let i = 0; i < sections.length; i++) {
         const section = sections[i];
 
@@ -144,6 +154,12 @@ export default function GameScreen() {
             if (score.value % SECTIONS_FOR_SPEED_INCREASE === 0) {
               speed.value += SPEED_INCREMENT;
             }
+
+            // Track the absolute boundary we are approaching next
+            const nextSec = sections.find((s) => s.id === section.id + 1);
+            if (nextSec) {
+              nextBoundaryAbsoluteY.value = nextSec.absoluteBottom;
+            }
           }
 
           const inDangerZone =
@@ -156,74 +172,65 @@ export default function GameScreen() {
           break;
         }
       }
+
+      // 2. Garbage Collection & Generation
+      let needsStateUpdate = false;
+
+      let offscreenCount = 0;
+      for (let i = 0; i < sections.length; i++) {
+        const sec = sections[i];
+        const secVisualTop = height + offset - sec.absoluteBottom - sec.length;
+        if (secVisualTop > height + 200) {
+          offscreenCount++;
+        } else {
+          break;
+        }
+      }
+
+      if (offscreenCount >= 5) {
+        sections.splice(0, 5);
+        needsStateUpdate = true;
+      }
+
+      if (sections.length < 10) {
+        let lastSection = sections[sections.length - 1];
+        for (let i = 0; i < 10; i++) {
+          const newColor = lastSection.color === COLOR_A ? COLOR_B : COLOR_A;
+          const newLength =
+            Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
+            MIN_SECTION_LENGTH;
+
+          const newSection = {
+            id: lastSection.id + 1,
+            color: newColor,
+            length: newLength,
+            absoluteBottom: lastSection.absoluteBottom + lastSection.length,
+          };
+          sections.push(newSection);
+          lastSection = newSection;
+        }
+        needsStateUpdate = true;
+      }
+
+      if (needsStateUpdate) {
+        setPathSections([...sections]);
+      }
     },
-    [ballColor, handleDeath, speed, playScore, score],
+    [ballColor, handleDeath, speed, playScore, score, nextBoundaryAbsoluteY],
   );
 
-  const gameLoop = useCallback(() => {
-    if (isDead) return;
-    pathOffset.value += speed.value;
-    checkCollision(pathOffset.value);
-
-    const sections = pathSectionsRef.current;
-    let needsStateUpdate = false;
-
-    let offscreenCount = 0;
-    for (let i = 0; i < sections.length; i++) {
-      const sec = sections[i];
-      const secVisualTop =
-        height + pathOffset.value - sec.absoluteBottom - sec.length;
-      if (secVisualTop > height + 200) {
-        offscreenCount++;
-      } else {
-        break;
+  useAnimatedReaction(
+    () => pathOffset.value,
+    (offset, prevOffset) => {
+      // Only call JS if it actually changed and game is active
+      if (offset !== prevOffset && !isDead.value) {
+        runOnJS(checkCollisionAndGenerate)(offset);
       }
-    }
-
-    if (offscreenCount >= 5) {
-      sections.splice(0, 5);
-      needsStateUpdate = true;
-    }
-
-    // Generate new sections if running low
-    if (sections.length < 10) {
-      let lastSection = sections[sections.length - 1];
-      for (let i = 0; i < 10; i++) {
-        const newColor = lastSection.color === COLOR_A ? COLOR_B : COLOR_A;
-        const newLength =
-          Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
-          MIN_SECTION_LENGTH;
-
-        const newSection = {
-          id: lastSection.id + 1,
-          color: newColor,
-          length: newLength,
-          absoluteBottom: lastSection.absoluteBottom + lastSection.length,
-        };
-        sections.push(newSection);
-        lastSection = newSection;
-      }
-      needsStateUpdate = true;
-    }
-
-    if (needsStateUpdate) {
-      setPathSections([...sections]);
-    }
-
-    animationFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [isDead, pathOffset, speed, checkCollision]);
-
-  useEffect(() => {
-    animationFrameRef.current = requestAnimationFrame(gameLoop);
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [gameLoop]);
+    },
+  );
 
   const handleTap = () => {
-    if (isDead) return;
+    if (isDead.value) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     playTap();
     ballColor.value = ballColor.value === COLOR_A ? COLOR_B : COLOR_A;
@@ -231,8 +238,30 @@ export default function GameScreen() {
 
   const ballStyle = useAnimatedStyle(() => ({
     backgroundColor: ballColor.value,
-    opacity: isDead ? 0 : 1,
+    opacity: isDead.value ? 0 : 1,
   }));
+
+  const glowStyle = useAnimatedStyle(() => {
+    if (isDead.value) return { opacity: 0, transform: [{ scale: 1 }] };
+
+    // Calculate distance to the next boundary line visually
+    const boundaryVisualY =
+      height + pathOffset.value - nextBoundaryAbsoluteY.value;
+    const distance = Math.abs(BALL_Y - boundaryVisualY);
+
+    // Glow intensifies within 150px of the boundary
+    const VISUAL_GRACE_DIST = 150;
+
+    let intensity = 0;
+    if (distance < VISUAL_GRACE_DIST) {
+      intensity = 1 - distance / VISUAL_GRACE_DIST;
+    }
+
+    return {
+      opacity: intensity, // Max opacity 100%
+      transform: [{ scale: 1 + intensity * 1.5 }], // Max scale 2.5x
+    };
+  });
 
   const pathStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: pathOffset.value }],
@@ -266,8 +295,7 @@ export default function GameScreen() {
         ))}
       </Animated.View>
 
-      <View style={styles.thresholdLine} pointerEvents="none" />
-
+      <Animated.View style={[styles.ballGlow, glowStyle]} />
       <Animated.View style={[styles.ball, ballStyle]} />
 
       <View style={styles.particleContainer} pointerEvents="none">
@@ -316,9 +344,30 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     width: "100%",
-    height: 4,
-    backgroundColor: "#000000",
+    height: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#FFFFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 15,
+    elevation: 10,
     zIndex: 2,
+    borderBottomWidth: 2,
+    borderBottomColor: "rgba(0,0,0,0.3)",
+  },
+  ballGlow: {
+    position: "absolute",
+    width: BALL_RADIUS * 2,
+    height: BALL_RADIUS * 2,
+    borderRadius: BALL_RADIUS,
+    top: BALL_Y - BALL_RADIUS,
+    zIndex: 99,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#FFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 15,
+    elevation: 10,
   },
   ball: {
     position: "absolute",
@@ -334,14 +383,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 8,
-  },
-  thresholdLine: {
-    position: "absolute",
-    top: BALL_Y,
-    width: PATH_WIDTH + 40,
-    height: 2,
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
-    zIndex: 90,
   },
   particleContainer: {
     position: "absolute",
