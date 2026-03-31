@@ -5,12 +5,13 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
+  withSequence,
   runOnJS,
-  useAnimatedReaction,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import ScoreDisplay from "../components/ScoreDisplay";
+import { useAudio } from "../hooks/useAudio";
 import {
   COLOR_A,
   COLOR_B,
@@ -26,6 +27,7 @@ import {
 
 const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
+const NUM_PARTICLES = 12;
 
 export default function GameScreen() {
   const router = useRouter();
@@ -34,8 +36,12 @@ export default function GameScreen() {
   const ballColor = useSharedValue(COLOR_A);
   const pathOffset = useSharedValue(0);
   const speed = useSharedValue(INITIAL_SPEED);
+  
+  const flashOpacity = useSharedValue(0);
+  const particleProgress = useSharedValue(0);
+  
+  const { playTap, playDeath, playScore } = useAudio();
 
-  // Minimal path sections just for prototype
   const [pathSections, setPathSections] = useState([
     { id: 0, color: COLOR_A, length: height },
     { id: 1, color: COLOR_B, length: 600 },
@@ -46,18 +52,29 @@ export default function GameScreen() {
   const animationFrameRef = useRef(null);
   const currentSectionIndex = useRef(0);
   const scoreRef = useRef(0);
+  const lastSectionColor = useRef(null);
 
-  const handleDeath = useCallback(() => {
+  const handleDeath = useCallback((wrongColor) => {
     setIsDead(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     cancelAnimationFrame(animationFrameRef.current);
+    
+    // Death sequence
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    playDeath();
+    
+    flashOpacity.value = withSequence(
+      withTiming(0.8, { duration: 100 }),
+      withTiming(0, { duration: 500 })
+    );
+
+    particleProgress.value = withTiming(1, { duration: 500 });
+    
+    lastSectionColor.current = wrongColor;
+
     setTimeout(() => {
-      router.replace({
-        pathname: "/death",
-        params: { score: scoreRef.current },
-      });
+      router.replace({ pathname: '/death', params: { score: scoreRef.current } });
     }, 600);
-  }, [router]);
+  }, [router, flashOpacity, particleProgress, playDeath]);
 
   const checkCollision = useCallback(
     (offset) => {
@@ -75,19 +92,20 @@ export default function GameScreen() {
             currentSectionIndex.current = i;
             scoreRef.current += 1;
             setScore(scoreRef.current);
+            playScore();
             if (scoreRef.current % SECTIONS_FOR_SPEED_INCREASE === 0) {
               speed.value += SPEED_INCREMENT;
             }
           }
 
           if (ballColor.value !== section.color) {
-            handleDeath();
+            runOnJS(handleDeath)(section.color);
           }
           break;
         }
       }
     },
-    [ballColor.value, handleDeath, pathSections, speed],
+    [ballColor.value, handleDeath, pathSections, speed, playScore],
   );
 
   const gameLoop = useCallback(() => {
@@ -95,7 +113,7 @@ export default function GameScreen() {
     pathOffset.value += speed.value;
     checkCollision(pathOffset.value);
 
-    // Simple path generation (very hacky for MVP)
+    // Dynamic path generation
     if (pathOffset.value > pathSections[0].length) {
       setPathSections((prev) => {
         const last = prev[prev.length - 1];
@@ -129,16 +147,46 @@ export default function GameScreen() {
 
   const handleTap = () => {
     if (isDead) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    playTap();
     ballColor.value = ballColor.value === COLOR_A ? COLOR_B : COLOR_A;
   };
 
   const ballStyle = useAnimatedStyle(() => ({
     backgroundColor: ballColor.value,
+    opacity: isDead ? 0 : 1,
   }));
 
   const pathStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: pathOffset.value }],
   }));
+
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: flashOpacity.value,
+    backgroundColor: lastSectionColor.current || '#000',
+  }));
+
+  // Particles generator
+  const particles = Array.from({ length: NUM_PARTICLES }).map((_, i) => {
+    const angle = (i / NUM_PARTICLES) * Math.PI * 2;
+    const distance = 80; // Burst radius
+    
+    const pStyle = useAnimatedStyle(() => ({
+      opacity: isDead ? 1 - particleProgress.value : 0,
+      transform: [
+        { translateX: Math.cos(angle) * (distance * particleProgress.value) },
+        { translateY: Math.sin(angle) * (distance * particleProgress.value) },
+        { scale: 1 - particleProgress.value }
+      ]
+    }));
+    
+    return (
+      <Animated.View
+        key={i}
+        style={[styles.particle, { backgroundColor: ballColor.value }, pStyle]}
+      />
+    );
+  });
 
   return (
     <Pressable style={styles.container} onPress={handleTap}>
@@ -146,7 +194,7 @@ export default function GameScreen() {
         style={[styles.background, { backgroundColor: ballColor }]}
       />
       <Animated.View style={[styles.pathContainer, pathStyle]}>
-        {pathSections.map((section, index) => (
+        {pathSections.map((section) => (
           <View
             key={section.id}
             style={[
@@ -157,7 +205,16 @@ export default function GameScreen() {
         ))}
       </Animated.View>
       <Animated.View style={[styles.ball, ballStyle]} />
+
+      {/* Particle Explosion */}
+      <View style={styles.particleContainer} pointerEvents="none">
+        {particles}
+      </View>
+
       <ScoreDisplay score={score} />
+
+      {/* Death Flash */}
+      <Animated.View style={[StyleSheet.absoluteFillObject, flashStyle]} pointerEvents="none" />
     </Pressable>
   );
 }
@@ -197,4 +254,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
+  particleContainer: {
+    position: 'absolute',
+    top: BALL_Y,
+    left: width / 2,
+    zIndex: 101,
+  },
+  particle: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    top: -6,
+    left: -6,
+  }
 });
