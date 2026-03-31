@@ -5,7 +5,6 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withSequence,
-  runOnJS,
   SharedValue,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
@@ -28,6 +27,7 @@ import {
 const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
 const NUM_PARTICLES = 12;
+const COLLISION_GRACE = 15; // Leniency at boundaries
 
 interface ParticleProps {
   index: number;
@@ -36,12 +36,7 @@ interface ParticleProps {
   ballColor: SharedValue<string>;
 }
 
-const Particle = ({
-  index,
-  isDead,
-  particleProgress,
-  ballColor,
-}: ParticleProps) => {
+const Particle = ({ index, isDead, particleProgress, ballColor }: ParticleProps) => {
   const angle = (index / NUM_PARTICLES) * Math.PI * 2;
   const distance = 80;
 
@@ -56,7 +51,11 @@ const Particle = ({
 
   return (
     <Animated.View
-      style={[styles.particle, { backgroundColor: ballColor.value }, pStyle]}
+      style={[
+        styles.particle,
+        { backgroundColor: ballColor.value },
+        pStyle,
+      ]}
     />
   );
 };
@@ -65,7 +64,15 @@ interface PathSection {
   id: number;
   color: string;
   length: number;
+  absoluteBottom: number;
 }
+
+const INITIAL_SECTIONS: PathSection[] = [
+  { id: 0, color: COLOR_A, length: height, absoluteBottom: 0 },
+  { id: 1, color: COLOR_B, length: 600, absoluteBottom: height },
+  { id: 2, color: COLOR_A, length: 500, absoluteBottom: height + 600 },
+  { id: 3, color: COLOR_B, length: 700, absoluteBottom: height + 1100 },
+];
 
 export default function GameScreen() {
   const router = useRouter();
@@ -80,15 +87,11 @@ export default function GameScreen() {
 
   const { playTap, playDeath, playScore } = useAudio();
 
-  const [pathSections, setPathSections] = useState<PathSection[]>([
-    { id: 0, color: COLOR_A, length: height },
-    { id: 1, color: COLOR_B, length: 600 },
-    { id: 2, color: COLOR_A, length: 500 },
-    { id: 3, color: COLOR_B, length: 700 },
-  ]);
+  const [pathSections, setPathSections] = useState<PathSection[]>(INITIAL_SECTIONS);
+  const pathSectionsRef = useRef<PathSection[]>([...INITIAL_SECTIONS]);
 
   const animationFrameRef = useRef<number | null>(null);
-  const currentSectionIndex = useRef<number>(0);
+  const currentSectionIdRef = useRef<number>(0);
   const scoreRef = useRef<number>(0);
   const lastSectionColor = useRef<string | null>(null);
 
@@ -99,7 +102,6 @@ export default function GameScreen() {
         cancelAnimationFrame(animationFrameRef.current);
       }
 
-      // Death sequence
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       playDeath();
 
@@ -115,7 +117,7 @@ export default function GameScreen() {
       setTimeout(() => {
         router.replace({
           pathname: "/death",
-          params: { score: scoreRef.current },
+          params: { score: scoreRef.current.toString() },
         });
       }, 600);
     },
@@ -124,18 +126,20 @@ export default function GameScreen() {
 
   const checkCollision = useCallback(
     (offset: number) => {
-      let accumulatedLength = 0;
-      for (let i = 0; i < pathSections.length; i++) {
-        const section = pathSections[i];
-        accumulatedLength += section.length;
+      const sections = pathSectionsRef.current;
 
-        const sectionBottom = accumulatedLength - offset;
-        const sectionTop = sectionBottom - section.length;
+      for (let i = 0; i < sections.length; i++) {
+        const section = sections[i];
 
-        // If ball is within this section's vertical bounds
-        if (BALL_Y >= sectionTop && BALL_Y <= sectionBottom) {
-          if (i > currentSectionIndex.current) {
-            currentSectionIndex.current = i;
+        const sectionVisualBottomY = height + offset - section.absoluteBottom;
+        const sectionVisualTopY = sectionVisualBottomY - section.length;
+
+        if (
+          BALL_Y >= sectionVisualTopY + COLLISION_GRACE &&
+          BALL_Y <= sectionVisualBottomY - COLLISION_GRACE
+        ) {
+          if (section.id > currentSectionIdRef.current) {
+            currentSectionIdRef.current = section.id;
             scoreRef.current += 1;
             setScore(scoreRef.current);
             playScore();
@@ -145,13 +149,13 @@ export default function GameScreen() {
           }
 
           if (ballColor.value !== section.color) {
-            runOnJS(handleDeath)(section.color);
+            handleDeath(section.color);
           }
           break;
         }
       }
     },
-    [ballColor.value, handleDeath, pathSections, speed, playScore],
+    [ballColor, handleDeath, speed, playScore],
   );
 
   const gameLoop = useCallback(() => {
@@ -159,32 +163,45 @@ export default function GameScreen() {
     pathOffset.value += speed.value;
     checkCollision(pathOffset.value);
 
-    // Dynamic path generation
-    if (pathOffset.value > pathSections[0].length) {
-      setPathSections((prev) => {
-        const last = prev[prev.length - 1];
-        const newColor =
-          last.color === COLOR_A
-            ? COLOR_B
-            : Math.random() > 0.5
-              ? COLOR_A
-              : COLOR_B;
-        return [
-          ...prev.slice(1),
-          {
-            id: last.id + 1,
-            color: newColor,
-            length:
-              Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
-              MIN_SECTION_LENGTH,
-          },
-        ];
+    const sections = pathSectionsRef.current;
+    let needsStateUpdate = false;
+
+    // GC old sections completely below the screen
+    const bottomSection = sections[0];
+    const bottomSectionVisualTop = height + pathOffset.value - bottomSection.absoluteBottom - bottomSection.length;
+    if (bottomSectionVisualTop > height) {
+      sections.shift();
+      needsStateUpdate = true;
+    }
+
+    // Generate new sections if running low
+    if (sections.length < 5) {
+      const lastSection = sections[sections.length - 1];
+      const newColor =
+        lastSection.color === COLOR_A
+          ? COLOR_B
+          : Math.random() > 0.5
+            ? COLOR_A
+            : COLOR_B;
+      const newLength =
+        Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
+        MIN_SECTION_LENGTH;
+      
+      sections.push({
+        id: lastSection.id + 1,
+        color: newColor,
+        length: newLength,
+        absoluteBottom: lastSection.absoluteBottom + lastSection.length,
       });
-      pathOffset.value -= pathSections[0].length;
+      needsStateUpdate = true;
+    }
+
+    if (needsStateUpdate) {
+      setPathSections([...sections]);
     }
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
-  }, [isDead, pathOffset, speed, checkCollision, pathSections]);
+  }, [isDead, pathOffset, speed, checkCollision]);
 
   useEffect(() => {
     animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -227,14 +244,17 @@ export default function GameScreen() {
             key={section.id}
             style={[
               styles.pathSection,
-              { backgroundColor: section.color, height: section.length },
+              { 
+                backgroundColor: section.color, 
+                height: section.length,
+                bottom: section.absoluteBottom 
+              },
             ]}
           />
         ))}
       </Animated.View>
       <Animated.View style={[styles.ball, ballStyle]} />
 
-      {/* Particle Explosion */}
       <View style={styles.particleContainer} pointerEvents="none">
         {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
           <Particle
@@ -249,7 +269,6 @@ export default function GameScreen() {
 
       <ScoreDisplay score={score} />
 
-      {/* Death Flash */}
       <Animated.View
         style={[StyleSheet.absoluteFillObject, flashStyle]}
         pointerEvents="none"
@@ -273,9 +292,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: PATH_WIDTH,
     alignItems: "center",
-    flexDirection: "column-reverse",
   },
   pathSection: {
+    position: "absolute",
     width: PATH_WIDTH,
   },
   ball: {
