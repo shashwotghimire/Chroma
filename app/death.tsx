@@ -1,12 +1,16 @@
 import { View, Text, StyleSheet, Pressable, Share } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import * as Haptics from "expo-haptics";
 import { useHighScore } from "../hooks/useHighScore";
 import { useEffect } from "react";
 import ScoreCard from "../components/ScoreCard";
 
 export default function DeathScreen() {
   const router = useRouter();
-  const { score } = useLocalSearchParams<{ score: string }>();
+  const { score, mode = "easy" } = useLocalSearchParams<{
+    score: string;
+    mode: string;
+  }>();
   const currentScore = parseInt(score, 10) || 0;
   const { highScore, saveScoreIfBest, isLoaded } = useHighScore();
 
@@ -20,12 +24,23 @@ export default function DeathScreen() {
 
   const handleShare = async () => {
     try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await Share.share({
-        message: `I scored ${currentScore} in Chroma! Can you beat my best of ${finalBest}?`,
+        message: `I scored ${currentScore} in Chroma (${mode} mode)! Can you beat my best of ${finalBest}?`,
       });
     } catch (error: any) {
       console.error(error.message);
     }
+  };
+
+  const handlePlayAgain = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.replace({ pathname: "/game", params: { mode } });
+  };
+
+  const handleHome = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.replace("/");
   };
 
   return (
@@ -35,11 +50,17 @@ export default function DeathScreen() {
       <ScoreCard score={currentScore} bestScore={finalBest} />
 
       <View style={styles.buttons}>
-        <Pressable
-          style={styles.button}
-          onPress={() => router.replace("/game")}
-        >
+        <Pressable style={styles.button} onPress={handlePlayAgain}>
           <Text style={styles.buttonText}>PLAY AGAIN</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, styles.homeButton]}
+          onPress={handleHome}
+        >
+          <Text style={[styles.buttonText, styles.homeButtonText]}>
+            HOME (CHANGE DIFFICULTY)
+          </Text>
         </Pressable>
 
         <Pressable
@@ -79,13 +100,21 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 30,
-    width: 250,
+    width: 280,
     alignItems: "center",
   },
   buttonText: {
     color: "#FFF",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
+  },
+  homeButton: {
+    backgroundColor: "#F0F0F0",
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+  },
+  homeButtonText: {
+    color: "#333",
   },
   shareButton: {
     backgroundColor: "transparent",

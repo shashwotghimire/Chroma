@@ -165,11 +165,11 @@ export default function GameScreen() {
       setTimeout(() => {
         router.replace({
           pathname: "/death",
-          params: { score: score.value.toString() },
+          params: { score: score.value.toString(), mode },
         });
       }, 600);
     },
-    [router, flashOpacity, particleProgress, playDeath, score, isDead],
+    [router, flashOpacity, particleProgress, playDeath, score, isDead, mode],
   );
 
   useFrameCallback((frameInfo) => {
