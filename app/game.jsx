@@ -29,6 +29,30 @@ const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
 const NUM_PARTICLES = 12;
 
+const Particle = ({ index, isDead, particleProgress, ballColor }) => {
+  const angle = (index / NUM_PARTICLES) * Math.PI * 2;
+  const distance = 80;
+
+  const pStyle = useAnimatedStyle(() => ({
+    opacity: isDead ? 1 - particleProgress.value : 0,
+    transform: [
+      { translateX: Math.cos(angle) * (distance * particleProgress.value) },
+      { translateY: Math.sin(angle) * (distance * particleProgress.value) },
+      { scale: 1 - particleProgress.value },
+    ],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.particle,
+        { backgroundColor: ballColor.value },
+        pStyle,
+      ]}
+    />
+  );
+};
+
 export default function GameScreen() {
   const router = useRouter();
   const [score, setScore] = useState(0);
@@ -172,28 +196,6 @@ export default function GameScreen() {
     backgroundColor: lastSectionColor.current || "#000",
   }));
 
-  // Particles generator
-  const particles = Array.from({ length: NUM_PARTICLES }).map((_, i) => {
-    const angle = (i / NUM_PARTICLES) * Math.PI * 2;
-    const distance = 80; // Burst radius
-
-    const pStyle = useAnimatedStyle(() => ({
-      opacity: isDead ? 1 - particleProgress.value : 0,
-      transform: [
-        { translateX: Math.cos(angle) * (distance * particleProgress.value) },
-        { translateY: Math.sin(angle) * (distance * particleProgress.value) },
-        { scale: 1 - particleProgress.value },
-      ],
-    }));
-
-    return (
-      <Animated.View
-        key={i}
-        style={[styles.particle, { backgroundColor: ballColor.value }, pStyle]}
-      />
-    );
-  });
-
   return (
     <Pressable style={styles.container} onPress={handleTap}>
       <Animated.View
@@ -214,7 +216,15 @@ export default function GameScreen() {
 
       {/* Particle Explosion */}
       <View style={styles.particleContainer} pointerEvents="none">
-        {particles}
+        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+          <Particle
+            key={i}
+            index={i}
+            isDead={isDead}
+            particleProgress={particleProgress}
+            ballColor={ballColor}
+          />
+        ))}
       </View>
 
       <ScoreDisplay score={score} />
