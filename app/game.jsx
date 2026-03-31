@@ -36,10 +36,10 @@ export default function GameScreen() {
   const ballColor = useSharedValue(COLOR_A);
   const pathOffset = useSharedValue(0);
   const speed = useSharedValue(INITIAL_SPEED);
-  
+
   const flashOpacity = useSharedValue(0);
   const particleProgress = useSharedValue(0);
-  
+
   const { playTap, playDeath, playScore } = useAudio();
 
   const [pathSections, setPathSections] = useState([
@@ -54,27 +54,33 @@ export default function GameScreen() {
   const scoreRef = useRef(0);
   const lastSectionColor = useRef(null);
 
-  const handleDeath = useCallback((wrongColor) => {
-    setIsDead(true);
-    cancelAnimationFrame(animationFrameRef.current);
-    
-    // Death sequence
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    playDeath();
-    
-    flashOpacity.value = withSequence(
-      withTiming(0.8, { duration: 100 }),
-      withTiming(0, { duration: 500 })
-    );
+  const handleDeath = useCallback(
+    (wrongColor) => {
+      setIsDead(true);
+      cancelAnimationFrame(animationFrameRef.current);
 
-    particleProgress.value = withTiming(1, { duration: 500 });
-    
-    lastSectionColor.current = wrongColor;
+      // Death sequence
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      playDeath();
 
-    setTimeout(() => {
-      router.replace({ pathname: '/death', params: { score: scoreRef.current } });
-    }, 600);
-  }, [router, flashOpacity, particleProgress, playDeath]);
+      flashOpacity.value = withSequence(
+        withTiming(0.8, { duration: 100 }),
+        withTiming(0, { duration: 500 }),
+      );
+
+      particleProgress.value = withTiming(1, { duration: 500 });
+
+      lastSectionColor.current = wrongColor;
+
+      setTimeout(() => {
+        router.replace({
+          pathname: "/death",
+          params: { score: scoreRef.current },
+        });
+      }, 600);
+    },
+    [router, flashOpacity, particleProgress, playDeath],
+  );
 
   const checkCollision = useCallback(
     (offset) => {
@@ -163,23 +169,23 @@ export default function GameScreen() {
 
   const flashStyle = useAnimatedStyle(() => ({
     opacity: flashOpacity.value,
-    backgroundColor: lastSectionColor.current || '#000',
+    backgroundColor: lastSectionColor.current || "#000",
   }));
 
   // Particles generator
   const particles = Array.from({ length: NUM_PARTICLES }).map((_, i) => {
     const angle = (i / NUM_PARTICLES) * Math.PI * 2;
     const distance = 80; // Burst radius
-    
+
     const pStyle = useAnimatedStyle(() => ({
       opacity: isDead ? 1 - particleProgress.value : 0,
       transform: [
         { translateX: Math.cos(angle) * (distance * particleProgress.value) },
         { translateY: Math.sin(angle) * (distance * particleProgress.value) },
-        { scale: 1 - particleProgress.value }
-      ]
+        { scale: 1 - particleProgress.value },
+      ],
     }));
-    
+
     return (
       <Animated.View
         key={i}
@@ -214,7 +220,10 @@ export default function GameScreen() {
       <ScoreDisplay score={score} />
 
       {/* Death Flash */}
-      <Animated.View style={[StyleSheet.absoluteFillObject, flashStyle]} pointerEvents="none" />
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, flashStyle]}
+        pointerEvents="none"
+      />
     </Pressable>
   );
 }
@@ -255,17 +264,17 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   particleContainer: {
-    position: 'absolute',
+    position: "absolute",
     top: BALL_Y,
     left: width / 2,
     zIndex: 101,
   },
   particle: {
-    position: 'absolute',
+    position: "absolute",
     width: 12,
     height: 12,
     borderRadius: 6,
     top: -6,
     left: -6,
-  }
+  },
 });
