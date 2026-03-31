@@ -236,10 +236,28 @@ export default function GameScreen() {
     ballColor.value = ballColor.value === COLOR_A ? COLOR_B : COLOR_A;
   };
 
-  const ballStyle = useAnimatedStyle(() => ({
-    backgroundColor: ballColor.value,
-    opacity: isDead.value ? 0 : 1,
-  }));
+  const ballStyle = useAnimatedStyle(() => {
+    let translateX = 0;
+    let translateY = 0;
+
+    if (!isDead.value) {
+      const boundaryVisualY =
+        height + pathOffset.value - nextBoundaryAbsoluteY.value;
+      const distance = Math.abs(BALL_Y - boundaryVisualY);
+
+      if (distance < COLLISION_GRACE + 40) {
+        const shakeIntensity = 1 - distance / (COLLISION_GRACE + 40);
+        translateX = Math.sin(pathOffset.value * 1.5) * (shakeIntensity * 6);
+        translateY = Math.cos(pathOffset.value * 1.3) * (shakeIntensity * 6);
+      }
+    }
+
+    return {
+      backgroundColor: ballColor.value,
+      opacity: isDead.value ? 0 : 1,
+      transform: [{ translateX }, { translateY }],
+    };
+  });
 
   const glowStyle = useAnimatedStyle(() => {
     if (isDead.value) return { opacity: 0, transform: [{ scale: 1 }] };
@@ -253,13 +271,33 @@ export default function GameScreen() {
     const VISUAL_GRACE_DIST = 150;
 
     let intensity = 0;
+    let translateX = 0;
+    let translateY = 0;
+    // Determine the glow color by asking what the NEXT color needs to be.
+    // If the ball is currently COLOR_A, it needs to be COLOR_B to survive.
+    let glowColor = ballColor.value === COLOR_A ? COLOR_B : COLOR_A;
+
     if (distance < VISUAL_GRACE_DIST) {
       intensity = 1 - distance / VISUAL_GRACE_DIST;
+
+      // When getting dangerously close (e.g. inside or right next to collision grace)
+      if (distance < COLLISION_GRACE + 40) {
+        // Violent shaking based on the continuously updating pathOffset
+        const shakeIntensity = 1 - distance / (COLLISION_GRACE + 40);
+        translateX = Math.sin(pathOffset.value * 0.8) * (shakeIntensity * 12);
+        translateY = Math.cos(pathOffset.value * 0.9) * (shakeIntensity * 12);
+      }
     }
 
     return {
       opacity: intensity, // Max opacity 100%
-      transform: [{ scale: 1 + intensity * 1.5 }], // Max scale 2.5x
+      backgroundColor: glowColor,
+      shadowColor: glowColor,
+      transform: [
+        { translateX },
+        { translateY },
+        { scale: 1 + intensity * 1.5 },
+      ], // Max scale 2.5x
     };
   });
 
