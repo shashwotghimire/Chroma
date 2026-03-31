@@ -6,7 +6,6 @@ import Animated, {
   withTiming,
   withSequence,
   SharedValue,
-  runOnJS,
 } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -28,7 +27,8 @@ import {
 const { width, height } = Dimensions.get("window");
 const BALL_Y = height * 0.7;
 const NUM_PARTICLES = 12;
-const COLLISION_GRACE = 40; // Leniency at boundaries for a visible safe-zone
+const PARTICLE_INDICES = Array.from({ length: NUM_PARTICLES }).map((_, i) => i);
+const COLLISION_GRACE = 15; // Leniency at boundaries
 
 interface ParticleProps {
   index: number;
@@ -70,9 +70,9 @@ interface PathSection {
 
 const INITIAL_SECTIONS: PathSection[] = [
   { id: 0, color: COLOR_A, length: height, absoluteBottom: 0 },
-  { id: 1, color: COLOR_B, length: 600, absoluteBottom: height },
-  { id: 2, color: COLOR_A, length: 500, absoluteBottom: height + 600 },
-  { id: 3, color: COLOR_B, length: 700, absoluteBottom: height + 1100 },
+  { id: 1, color: COLOR_B, length: 400, absoluteBottom: height },
+  { id: 2, color: COLOR_A, length: 400, absoluteBottom: height + 400 },
+  { id: 3, color: COLOR_B, length: 400, absoluteBottom: height + 800 },
 ];
 
 export default function GameScreen() {
@@ -141,7 +141,7 @@ export default function GameScreen() {
           if (section.id > currentSectionIdRef.current) {
             currentSectionIdRef.current = section.id;
             score.value += 1;
-            runOnJS(playScore)();
+            playScore();
             if (score.value % SECTIONS_FOR_SPEED_INCREASE === 0) {
               speed.value += SPEED_INCREMENT;
             }
@@ -152,7 +152,7 @@ export default function GameScreen() {
             BALL_Y <= sectionVisualBottomY - COLLISION_GRACE;
 
           if (inDangerZone && ballColor.value !== section.color) {
-            runOnJS(handleDeath)(section.color);
+            handleDeath(section.color);
           }
           break;
         }
@@ -169,24 +169,27 @@ export default function GameScreen() {
     const sections = pathSectionsRef.current;
     let needsStateUpdate = false;
 
-    // GC old sections completely below the screen
-    const bottomSection = sections[0];
-    const bottomSectionVisualTop = height + pathOffset.value - bottomSection.absoluteBottom - bottomSection.length;
-    if (bottomSectionVisualTop > height) {
-      sections.shift();
+    let offscreenCount = 0;
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i];
+      const secVisualTop = height + pathOffset.value - sec.absoluteBottom - sec.length;
+      if (secVisualTop > height + 200) {
+        offscreenCount++;
+      } else {
+        break;
+      }
+    }
+
+    if (offscreenCount >= 5) {
+      sections.splice(0, 5);
       needsStateUpdate = true;
     }
 
     // Generate new sections if running low
-    if (sections.length < 5) {
+    if (sections.length < 10) {
       let lastSection = sections[sections.length - 1];
-      for (let i = 0; i < 5; i++) {
-        const newColor =
-          lastSection.color === COLOR_A
-            ? COLOR_B
-            : Math.random() > 0.5
-              ? COLOR_A
-              : COLOR_B;
+      for (let i = 0; i < 10; i++) {
+        const newColor = lastSection.color === COLOR_A ? COLOR_B : COLOR_A;
         const newLength =
           Math.random() * (MAX_SECTION_LENGTH - MIN_SECTION_LENGTH) +
           MIN_SECTION_LENGTH;
@@ -259,15 +262,13 @@ export default function GameScreen() {
             ]}
           >
             <View style={styles.sectionBorderTop} />
-            <View style={styles.sectionBorderBottom} />
-            <View style={styles.safeZone} />
           </View>
         ))}
       </Animated.View>
       <Animated.View style={[styles.ball, ballStyle]} />
 
       <View style={styles.particleContainer} pointerEvents="none">
-        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+        {PARTICLE_INDICES.map((i) => (
           <Particle
             key={i}
             index={i}
@@ -315,24 +316,6 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: "#000000",
     zIndex: 2,
-  },
-  sectionBorderBottom: {
-    position: "absolute",
-    bottom: 0,
-    width: "100%",
-    height: 4,
-    backgroundColor: "#000000",
-    zIndex: 2,
-  },
-  safeZone: {
-    position: "absolute",
-    top: -COLLISION_GRACE,
-    height: COLLISION_GRACE * 2,
-    width: "100%",
-    borderWidth: 4,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-    borderStyle: "dashed",
-    zIndex: 10,
   },
   ball: {
     position: "absolute",
